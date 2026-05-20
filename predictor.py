@@ -1,6 +1,6 @@
 from config import *
 
-N_ESTIMATORS = 100
+N_ESTIMATORS = 200
 
 def parse_time_input(time_str): #gets the time input desired by user
     time_str = time_str.strip().lower()
@@ -32,16 +32,12 @@ def days_forward(time_advance):
         raise ValueError('Invalid. Make sure you enter a number between 1-30: ')
 
 def get_stock_data(ticker, days=365): #gets stock data desired by user and put it in a pandas df
-    end = datetime.now()
+    end = datetime.now() + timedelta(days=1)
     start = end - timedelta(days=days)
     
-    df = api.get_bars(
-        ticker,
-        "1Day",
-        start=start.strftime("%Y-%m-%d"),
-        end=end.strftime("%Y-%m-%d"),
-        feed="iex"
-    ).df
+    df = yf.download(ticker, start=start.strftime("%Y-%m-%d"), end=end.strftime("%Y-%m-%d"))
+    df.columns = df.columns.get_level_values(0)
+    df.columns = [c.lower() for c in df.columns]
     
     return df
 
@@ -57,7 +53,7 @@ while True:
 
 while True:
     try:
-        time_input = input("How far back should we analyze? (e.g. 90d, 6m, 2y): ")
+        time_input = input("How far back should we analyze? (e.g. 90d, 6m, 2y, max is 1824d): ")
         days = parse_time_input(time_input)
         break
     except:
@@ -76,24 +72,26 @@ while True:
 df = get_stock_data(ticker, days)
 # print(df.head())
 
-df['daily_return']=df['close'].pct_change() * 100 #adds a daily return column to our df
+#features, thing the model will be trained on
+df['daily_return']=df['close'].pct_change() * 100 
 
-df['SMA_20']=df['close'].rolling(window=20).mean() #SMA 20 & 50
+df['SMA_20']=df['close'].rolling(window=20).mean() 
 df['SMA_50']=df['close'].rolling(window=50).mean()
 
-df['volume_change']=df['volume'].pct_change() * 100 #volume change, can be its own indicator
+df['volume_change']=df['volume'].pct_change() * 100
 
 df['price_range']=df['high']-df['low']
 
 df['target']=df['close'].shift(-time_forward)
 
-df=df.dropna()
+df_clean=df.dropna()
 
-features=df[['daily_return', 'SMA_20', 'SMA_50', 'volume_change', 'price_range']]
-target_values=df['target']
+features=df_clean[['daily_return', 'SMA_20', 'SMA_50', 'volume_change', 'price_range']]
+target_values=df_clean['target']
 
 features_train, features_test, target_values_train, target_values_test = train_test_split(features, target_values, test_size=0.2, random_state=42)
 
+#machine learning model \/
 regressor=RandomForestRegressor(n_estimators=N_ESTIMATORS, random_state=42)
 regressor.fit(features_train, target_values_train)
 
@@ -105,6 +103,65 @@ tree_predictions_array=np.array(tree_predictions)
 lower_bound=np.percentile(tree_predictions_array, 5, axis=0)
 upper_bound=np.percentile(tree_predictions_array, 95, axis=0)
 
-print(predictions)
-print(upper_bound)
-print(lower_bound)
+# print(predictions)
+# print(upper_bound)
+# print(lower_bound)
+
+#predictor for the next time_forward days:
+last_features = features.iloc[[-1]].copy()
+last_close = df['close'].iloc[-1]
+forecast = []
+tree_preds = []
+recent_closes = list(df['close'].iloc[-50:])
+for i in range(time_forward):
+    pred = regressor.predict(last_features)
+    forecast.append(pred[0])
+
+    tree_preds_step = [tree.predict(last_features.values) for tree in regressor.estimators_]
+    lower = np.percentile(tree_preds_step, 5)
+    upper = np.percentile(tree_preds_step, 95)
+    tree_preds.append((lower, upper))
+
+    new_return = (pred[0] - last_close) / last_close * 100
+    last_features['daily_return'] = new_return
+    
+    last_close = pred[0]  # update for next iteration
+    recent_closes.append(pred[0])
+    
+    new_SMA_20 = np.mean(recent_closes[-20:])
+    new_SMA_50 = np.mean(recent_closes[-50:])
+    last_features['SMA_20'] = new_SMA_20
+    last_features['SMA_50'] = new_SMA_50
+
+    #price_range and volume_change we can't really calculate from predicted prices 
+    # since we don't know future highs/lows or volume. So we just leave them as the last real values 
+
+forecast = np.array(forecast)
+forecast_lower = np.array([x[0] for x in tree_preds])
+forecast_upper = np.array([x[1] for x in tree_preds])
+
+#plotting, with a latest display_days window context purely for user \/
+
+def plot_context(display_days):
+    plt.figure(figsize=(10,5))
+    plt.title(f"{ticker} - {display_days} Day View")
+    plt.plot(df.index[-display_days:], df['close'].tail(display_days), label="Actual", color='Blue')
+    future_dates = pd.date_range(start=df.index[-1], periods=time_forward + 1, freq='B') #generates an array with the next time_forward days and skips weekends. 
+    #Starts at the last day we had and ends after the time_forward days have passed
+    connected_predictions = np.append(df['close'].iloc[-1], forecast)
+    connected_lower = np.append(df['close'].iloc[-1], forecast_lower)
+    connected_upper = np.append(df['close'].iloc[-1], forecast_upper)
+
+    plt.plot(future_dates, connected_predictions, label="Predicted", color='Orange')
+    plt.fill_between(future_dates, connected_lower, connected_upper, alpha=0.3, color='Orange', label='Margin of Error')
+    plt.legend()
+    plt.xlabel("Date")
+    plt.ylabel("Price (US$)")
+
+plot_context(2)
+plot_context(30)
+plot_context(90)
+
+plt.show()
+# print(df.index[-1])
+# print(df.index[-3:])

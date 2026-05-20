@@ -1,4 +1,4 @@
-alpaca-trade-api
+yfinance
 pandas
 numpy
 scikit-learn
