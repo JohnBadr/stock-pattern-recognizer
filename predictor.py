@@ -1,5 +1,7 @@
 from config import *
 
+N_ESTIMATORS = 100
+
 def parse_time_input(time_str): #gets the time input desired by user
     time_str = time_str.strip().lower()
     
@@ -71,7 +73,6 @@ while True:
         print("Invalid format or invalid day number. ", end="")
 
 
-
 df = get_stock_data(ticker, days)
 # print(df.head())
 
@@ -85,3 +86,25 @@ df['volume_change']=df['volume'].pct_change() * 100 #volume change, can be its o
 df['price_range']=df['high']-df['low']
 
 df['target']=df['close'].shift(-time_forward)
+
+df=df.dropna()
+
+features=df[['daily_return', 'SMA_20', 'SMA_50', 'volume_change', 'price_range']]
+target_values=df['target']
+
+features_train, features_test, target_values_train, target_values_test = train_test_split(features, target_values, test_size=0.2, random_state=42)
+
+regressor=RandomForestRegressor(n_estimators=N_ESTIMATORS, random_state=42)
+regressor.fit(features_train, target_values_train)
+
+predictions=regressor.predict(features_test)
+
+tree_predictions=[tree.predict(features_test.values) for tree in regressor.estimators_]
+tree_predictions_array=np.array(tree_predictions)
+
+lower_bound=np.percentile(tree_predictions_array, 5, axis=0)
+upper_bound=np.percentile(tree_predictions_array, 95, axis=0)
+
+print(predictions)
+print(upper_bound)
+print(lower_bound)
