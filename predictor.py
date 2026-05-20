@@ -82,7 +82,7 @@ df['volume_change']=df['volume'].pct_change() * 100
 
 df['price_range']=df['high']-df['low']
 
-df['target']=df['close'].shift(-time_forward)
+df['target']=df['close'].shift(-1)
 
 df_clean=df.dropna()
 
@@ -100,8 +100,8 @@ predictions=regressor.predict(features_test)
 tree_predictions=[tree.predict(features_test.values) for tree in regressor.estimators_]
 tree_predictions_array=np.array(tree_predictions)
 
-lower_bound=np.percentile(tree_predictions_array, 5, axis=0)
-upper_bound=np.percentile(tree_predictions_array, 95, axis=0)
+lower_bound=np.percentile(tree_predictions_array, 25, axis=0)
+upper_bound=np.percentile(tree_predictions_array, 75, axis=0)
 
 # print(predictions)
 # print(upper_bound)
@@ -113,13 +113,13 @@ last_close = df['close'].iloc[-1]
 forecast = []
 tree_preds = []
 recent_closes = list(df['close'].iloc[-50:])
-for i in range(time_forward):
-    pred = regressor.predict(last_features)
-    forecast.append(pred[0])
+for i in range(time_forward): #here -> takes the last row of values then uses them to calc day 1, then uses the vals of
+    pred = regressor.predict(last_features) #day 1 to calc day 2 etc. This causes compounding/accumulating error, the
+    forecast.append(pred[0])  #more it goes forward, the more inaccurate it gets, exponentially.
 
     tree_preds_step = [tree.predict(last_features.values) for tree in regressor.estimators_]
-    lower = np.percentile(tree_preds_step, 5)
-    upper = np.percentile(tree_preds_step, 95)
+    lower = np.percentile(tree_preds_step, 25)
+    upper = np.percentile(tree_preds_step, 75)
     tree_preds.append((lower, upper))
 
     new_return = (pred[0] - last_close) / last_close * 100
@@ -141,16 +141,18 @@ forecast_lower = np.array([x[0] for x in tree_preds])
 forecast_upper = np.array([x[1] for x in tree_preds])
 
 #plotting, with a latest display_days window context purely for user \/
+# print(df.index[-1])
+# print(df.index[-2])
 
 def plot_context(display_days):
     plt.figure(figsize=(10,5))
     plt.title(f"{ticker} - {display_days} Day View")
-    plt.plot(df.index[-display_days:], df['close'].tail(display_days), label="Actual", color='Blue')
-    future_dates = pd.date_range(start=df.index[-1], periods=time_forward + 1, freq='B') #generates an array with the next time_forward days and skips weekends. 
+    plt.plot(df.index[-display_days:-1], df['close'].tail(display_days)[:-1], label="Actual", color='Blue')
+    future_dates = pd.date_range(start=df.index[-2], periods=time_forward + 2, freq='B')#generates an array with the next time_forward days and skips weekends. 
     #Starts at the last day we had and ends after the time_forward days have passed
-    connected_predictions = np.append(df['close'].iloc[-1], forecast)
-    connected_lower = np.append(df['close'].iloc[-1], forecast_lower)
-    connected_upper = np.append(df['close'].iloc[-1], forecast_upper)
+    connected_predictions = np.append(df['close'].iloc[-2], np.append(df['close'].iloc[-1], forecast))
+    connected_lower = np.append(df['close'].iloc[-2], np.append(df['close'].iloc[-1], forecast_lower))
+    connected_upper = np.append(df['close'].iloc[-2], np.append(df['close'].iloc[-1], forecast_upper))
 
     plt.plot(future_dates, connected_predictions, label="Predicted", color='Orange')
     plt.fill_between(future_dates, connected_lower, connected_upper, alpha=0.3, color='Orange', label='Margin of Error')
@@ -158,7 +160,6 @@ def plot_context(display_days):
     plt.xlabel("Date")
     plt.ylabel("Price (US$)")
 
-plot_context(2)
 plot_context(30)
 plot_context(90)
 
