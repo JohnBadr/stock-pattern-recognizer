@@ -2,5 +2,5 @@ yfinance
 pandas
 numpy
 scikit-learn
-plotly.graph_objects
+plotly
 python-dotenv
