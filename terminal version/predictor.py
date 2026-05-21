@@ -70,7 +70,6 @@ while True:
 
 
 df = get_stock_data(ticker, days)
-# print(df.head())
 
 #features, thing the model will be trained on
 df['daily_return']=df['close'].pct_change() * 100 
@@ -95,17 +94,8 @@ features_train, features_test, target_values_train, target_values_test = train_t
 regressor=RandomForestRegressor(n_estimators=N_ESTIMATORS, random_state=42)
 regressor.fit(features_train, target_values_train)
 
-# predictions=regressor.predict(features_test)
-
 tree_predictions=[tree.predict(features_test.values) for tree in regressor.estimators_]
 tree_predictions_array=np.array(tree_predictions)
-
-# lower_bound=np.percentile(tree_predictions_array, 25, axis=0)
-# upper_bound=np.percentile(tree_predictions_array, 75, axis=0)
-
-# print(predictions)
-# print(upper_bound)
-# print(lower_bound)
 
 #predictor for the next time_forward days:
 last_features = features.iloc[[-1]].copy()
@@ -141,8 +131,6 @@ forecast_lower = np.array([x[0] for x in tree_preds])
 forecast_upper = np.array([x[1] for x in tree_preds])
 
 #plotting, with a latest display_days window context purely for user \/
-# print(df.index[-1])
-# print(df.index[-2])
 
 def plot_context(display_days):
     plt.figure(figsize=(10,5))
@@ -166,5 +154,3 @@ plot_context(90)
 plot_context(30)
 
 plt.show()
-# print(df.index[-1])
-# print(df.index[-3:])
