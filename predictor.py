@@ -95,13 +95,13 @@ features_train, features_test, target_values_train, target_values_test = train_t
 regressor=RandomForestRegressor(n_estimators=N_ESTIMATORS, random_state=42)
 regressor.fit(features_train, target_values_train)
 
-predictions=regressor.predict(features_test)
+# predictions=regressor.predict(features_test)
 
 tree_predictions=[tree.predict(features_test.values) for tree in regressor.estimators_]
 tree_predictions_array=np.array(tree_predictions)
 
-lower_bound=np.percentile(tree_predictions_array, 25, axis=0)
-upper_bound=np.percentile(tree_predictions_array, 75, axis=0)
+# lower_bound=np.percentile(tree_predictions_array, 25, axis=0)
+# upper_bound=np.percentile(tree_predictions_array, 75, axis=0)
 
 # print(predictions)
 # print(upper_bound)
@@ -147,21 +147,23 @@ forecast_upper = np.array([x[1] for x in tree_preds])
 def plot_context(display_days):
     plt.figure(figsize=(10,5))
     plt.title(f"{ticker} - {display_days} Day View")
-    plt.plot(df.index[-display_days:-1], df['close'].tail(display_days)[:-1], label="Actual", color='Blue')
-    future_dates = pd.date_range(start=df.index[-2], periods=time_forward + 2, freq='B')#generates an array with the next time_forward days and skips weekends. 
+    plt.plot(df.index[-display_days:], df['close'].tail(display_days), label="Actual", color='Blue')
+    future_dates = pd.date_range(start=df.index[-1], periods=time_forward + 1, freq='B') #generates an array with the next time_forward days and skips weekends. 
     #Starts at the last day we had and ends after the time_forward days have passed
-    connected_predictions = np.append(df['close'].iloc[-2], np.append(df['close'].iloc[-1], forecast))
-    connected_lower = np.append(df['close'].iloc[-2], np.append(df['close'].iloc[-1], forecast_lower))
-    connected_upper = np.append(df['close'].iloc[-2], np.append(df['close'].iloc[-1], forecast_upper))
+    connected_predictions = np.append(df['close'].iloc[-1], forecast)
+    connected_lower = np.append(df['close'].iloc[-1], forecast_lower)
+    connected_upper = np.append(df['close'].iloc[-1], forecast_upper)
 
     plt.plot(future_dates, connected_predictions, label="Predicted", color='Orange')
     plt.fill_between(future_dates, connected_lower, connected_upper, alpha=0.3, color='Orange', label='Margin of Error')
     plt.legend()
     plt.xlabel("Date")
     plt.ylabel("Price (US$)")
+    plt.figtext(0.5, 0.935, "⚠️ Predictions get exponentially more inaccurate the more time forward." \
+    "\nRemember, this is only a pattern recognizer. Stocks are chaotic.", ha='center', fontsize=8, color='red')
 
-plot_context(30)
 plot_context(90)
+plot_context(30)
 
 plt.show()
 # print(df.index[-1])
